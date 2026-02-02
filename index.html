@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>BuzzShorts App</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        /* --- APP BASE STYLES --- */
+        * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color: transparent; outline: none; user-select: none; }
+        body { background:#000; color:#fff; font-family:'Roboto', sans-serif; overflow:hidden; }
+
+        /* VIDEO FEED */
+        #video-feed { height:100vh; width:100vw; overflow-y:scroll; scroll-snap-type:y mandatory; scrollbar-width: none; }
+        #video-feed::-webkit-scrollbar { display:none; }
+        .video-card { position:relative; height:100vh; width:100vw; scroll-snap-align:start; background:#000; }
+        iframe { width:100%; height:100%; border:none; pointer-events: auto; }
+
+        /* SIDE ACTIONS (Like, Comment, Share, Report) */
+        .side-actions { 
+            position:absolute; right:12px; bottom:140px; 
+            display:flex; flex-direction:column; gap:20px; z-index:50; 
+        }
+        .action-item { 
+            background: rgba(255,255,255,0.1); backdrop-filter:blur(5px); 
+            width:45px; height:45px; border-radius:50%; display:flex; 
+            justify-content:center; align-items:center; 
+            border:1px solid rgba(255,255,255,0.1); cursor:pointer; transition: 0.2s;
+        }
+        .action-item:active { transform: scale(0.9); }
+        .action-item i { font-size: 20px; color: #fff; }
+        .action-item.like.active i { color: #ff3b3b; }
+        .action-item p { font-size: 10px; margin-top: 5px; text-align: center; }
+
+        /* VIDEO INFO */
+        .video-meta { 
+            position:absolute; bottom:110px; left:15px; width:70%; z-index:50; 
+            text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+        }
+        .video-meta h3 { font-size:16px; margin-bottom:5px; color:#00f2ff; font-weight: 700; }
+        .video-meta p { font-size:14px; opacity:0.9; line-height: 1.3; }
+
+        /* --- PANELS (Comments & Gifts) --- */
+        .panel-overlay {
+            position: fixed; bottom: -100%; left: 0; width: 100%; height: 65%;
+            background: #121212; border-radius: 20px 20px 0 0; z-index: 1000;
+            transition: 0.3s ease-in-out; display: flex; flex-direction: column;
+            border-top: 1px solid #333; box-shadow: 0 -5px 20px rgba(0,0,0,0.5);
+        }
+        .panel-overlay.show { bottom: 0; }
+        
+        .panel-header {
+            padding: 15px; display: flex; justify-content: space-between; align-items: center;
+            border-bottom: 1px solid #2a2a2a; font-size: 14px; font-weight: bold; color: #eee;
+        }
+        
+        /* COMMENTS STYLES */
+        #comment-list { flex: 1; overflow-y: auto; padding: 15px; }
+        .comment-item { display: flex; gap: 10px; margin-bottom: 18px; }
+        .avatar { width: 32px; height: 32px; background: #333; border-radius: 50%; display: grid; place-items: center; font-size: 10px; color: #888; }
+        .c-body { flex: 1; }
+        .c-user { font-size: 12px; color: #aaa; margin-bottom: 2px; }
+        .c-text { font-size: 14px; color: #fff; line-height: 1.4; }
+        .c-actions { display: flex; gap: 15px; margin-top: 5px; font-size: 11px; color: #666; font-weight: 600; }
+        .c-actions span { cursor: pointer; }
+        .reply-box { border-left: 2px solid #444; margin-top: 8px; padding-left: 10px; }
+
+        .input-area {
+            padding: 10px 15px; border-top: 1px solid #2a2a2a; background: #1a1a1a; display: flex; gap: 10px; align-items: center;
+        }
+        .input-area input {
+            flex: 1; background: #2c2c2c; border: none; padding: 12px 15px; border-radius: 25px; color: #fff; font-size: 14px;
+        }
+        .input-area button {
+            background: #00f2ff; border: none; padding: 8px 15px; border-radius: 20px; font-weight: bold; font-size: 13px; color: #000;
+        }
+
+        /* GIFT GRID */
+        .gift-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; padding: 15px; overflow-y: auto; }
+        .gift-item { background: #1e1e1e; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid #333; }
+        .gift-item:active { border-color: #ffd700; background: #2a2a2a; }
+        .gift-emoji { font-size: 24px; display: block; margin-bottom: 5px; }
+        .gift-price { font-size: 11px; color: #ffd700; font-weight: bold; }
+
+        /* NAVIGATION BAR */
+        .bottom-nav {
+            position:fixed; bottom:0; width:100%; height:60px; background:#000;
+            display:flex; justify-content:space-around; align-items:center; 
+            border-top:1px solid #222; z-index:100;
+        }
+        .nav-icon { font-size:22px; color:#555; padding: 10px; }
+        .nav-icon.active { color:#fff; }
+        .upload-btn { font-size:30px; color:#fff; }
+    </style>
+</head>
+<body>
+
+<div id="video-feed"></div>
+
+<div id="comment-panel" class="panel-overlay">
+    <div class="panel-header">
+        <span><i class="fas fa-comments"></i> Comments</span>
+        <i class="fas fa-times" onclick="togglePanel('comment-panel')"></i>
+    </div>
+    <div id="comment-list">
+        <div class="comment-item">
+            <div class="avatar">Bot</div>
+            <div class="c-body">
+                <div class="c-user">BuzzShorts Team</div>
+                <div class="c-text">Welcome to the app! Please follow our community guidelines.</div>
+                <div class="c-actions"><span>Reply</span></div>
+            </div>
+        </div>
+    </div>
+    <div class="input-area">
+        <input type="text" id="comment-input" placeholder="Add a comment...">
+        <button onclick="postComment()">Send</button>
+    </div>
+</div>
+
+<div id="gift-panel" class="panel-overlay" style="height: 50%;">
+    <div class="panel-header">
+        <span style="color:#ffd700"><i class="fas fa-coins"></i> Balance: 500</span>
+        <i class="fas fa-times" onclick="togglePanel('gift-panel')"></i>
+    </div>
+    <div class="gift-grid">
+        <div class="gift-item" onclick="sendGift('Rose', 5)"><span class="gift-emoji">🌹</span><span class="gift-price">5 Coins</span></div>
+        <div class="gift-item" onclick="sendGift('Fire', 10)"><span class="gift-emoji">🔥</span><span class="gift-price">10 Coins</span></div>
+        <div class="gift-item" onclick="sendGift('Heart', 20)"><span class="gift-emoji">❤️</span><span class="gift-price">20 Coins</span></div>
+        <div class="gift-item" onclick="sendGift('Rocket', 100)"><span class="gift-emoji">🚀</span><span class="gift-price">100 Coins</span></div>
+    </div>
+</div>
+
+<nav class="bottom-nav">
+    <i class="fas fa-home nav-icon active"></i>
+    <i class="fas fa-compass nav-icon"></i>
+    <i class="fas fa-plus-square upload-btn" onclick="alert('Login required to upload!')"></i>
+    <i class="fas fa-inbox nav-icon"></i>
+    <i class="fas fa-user nav-icon"></i>
+</nav>
+
+<script>
+    // --- CONFIGURATION ---
+    // যখন ডেলিমোশন থেকে আইডি পাবেন, এটা পাল্টে দেবেন।
+    // এখন "x123abc" বা ফাঁকা রাখলে সাধারণ প্লেয়ার চলবে।
+    const PLAYER_ID = ""; 
+
+    // --- VIDEO DATA (Example) ---
+    const videos = [
+        {id:'x8m9fzq', user:'@Dance_Queen', desc:'Viral dance trend! 💃 #dance #trending'},
+        {id:'x8p2v7m', user:'@Travel_Vibes', desc:'Wait for the view... 🏔️ #nature'},
+        {id:'x8q4k9n', user:'@Funny_Clips', desc:'Try not to laugh challenge 😂'}
+    ];
+
+    const feed = document.getElementById('video-feed');
+    let editingNode = null;
+
+    // --- RENDER VIDEOS ---
+    function init() {
+        videos.forEach(v => createVideoCard(v));
+    }
+
+    function createVideoCard(v) {
+        const div = document.createElement('div');
+        div.className = 'video-card';
+        // Player Params: enable-api for control, mute=1 initially for autoplay policy
+        let src = `https://www.dailymotion.com/embed/video/${v.id}?autoplay=1&mute=1&controls=0&sharing-enable=0&ui-logo=0`;
+        if(PLAYER_ID) src += `&player=${PLAYER_ID}`;
+
+        div.innerHTML = `
+            <iframe src="${src}" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe>
+            
+            <div class="side-actions">
+                <div class="action-item like" onclick="this.classList.toggle('active')">
+                    <i class="fas fa-heart"></i>
+                </div>
+                <div class="action-item" onclick="togglePanel('comment-panel')">
+                    <i class="fas fa-comment-dots"></i>
+                </div>
+                <div class="action-item" onclick="togglePanel('gift-panel')">
+                    <i class="fas fa-gift" style="color:#ffd700"></i>
+                </div>
+                <div class="action-item" onclick="shareVideo('${v.id}')">
+                    <i class="fas fa-share"></i>
+                </div>
+                <div class="action-item" style="background:rgba(255,0,0,0.2); border-color:rgba(255,0,0,0.3)" onclick="reportVideo('${v.id}')">
+                    <i class="fas fa-flag"></i>
+                </div>
+            </div>
+
+            <div class="video-meta">
+                <h3>${v.user}</h3>
+                <p>${v.desc}</p>
+            </div>
+        `;
+        feed.appendChild(div);
+    }
+
+    // --- ACTIONS ---
+    function togglePanel(id) {
+        document.getElementById(id).classList.toggle('show');
+    }
+
+    function shareVideo(id) {
+        // Native Share (Android)
+        if (navigator.share) {
+            navigator.share({
+                title: 'BuzzShorts',
+                text: 'Check out this video!',
+                url: 'https://dai.ly/' + id,
+            });
+        } else {
+            alert('Link copied!');
+        }
+    }
+
+    function reportVideo(id) {
+        if(confirm("Report this video as inappropriate?")) {
+            // Here you would send API request to your server
+            alert("Report submitted! We will review this video shortly.");
+        }
+    }
+
+    function sendGift(name, price) {
+        alert(`Sent ${name}! -${price} Coins deducted.`);
+        togglePanel('gift-panel');
+    }
+
+    // --- ADVANCED COMMENT LOGIC ---
+    function postComment() {
+        const input = document.getElementById('comment-input');
+        const list = document.getElementById('comment-list');
+        const text = input.value.trim();
+
+        if(!text) return;
+
+        if(editingNode) {
+            // Edit Mode
+            editingNode.innerText = text;
+            editingNode = null;
+            input.placeholder = "Add a comment...";
+        } else {
+            // New Comment
+            const id = Date.now();
+            const div = document.createElement('div');
+            div.className = 'comment-item';
+            div.id = 'comm-' + id;
+            div.innerHTML = `
+                <div class="avatar">ME</div>
+                <div class="c-body">
+                    <div class="c-user">You</div>
+                    <div class="c-text" id="text-${id}">${text}</div>
+                    <div class="c-actions">
+                        <span onclick="startReply('${id}')">Reply</span>
+                        <span onclick="startEdit('${id}')">Edit</span>
+                        <span onclick="deleteComm('${id}')" style="color:#ff4444">Delete</span>
+                    </div>
+                    <div class="reply-box" id="reply-${id}"></div>
+                </div>
+            `;
+            list.prepend(div);
+        }
+        input.value = "";
+    }
+
+    function deleteComm(id) {
+        if(confirm("Delete this comment?")) {
+            document.getElementById('comm-'+id).remove();
+        }
+    }
+
+    function startEdit(id) {
+        const textElem = document.getElementById('text-'+id);
+        const input = document.getElementById('comment-input');
+        input.value = textElem.innerText;
+        input.focus();
+        input.placeholder = "Editing comment...";
+        editingNode = textElem;
+    }
+
+    function startReply(id) {
+        const replyText = prompt("Write your reply:");
+        if(replyText) {
+            const box = document.getElementById('reply-'+id);
+            const rDiv = document.createElement('div');
+            rDiv.style.marginTop = "8px";
+            rDiv.innerHTML = `
+                <div style="font-size:11px; color:#aaa; font-weight:bold;">Replied:</div>
+                <div style="font-size:13px; color:#ddd;">${replyText}</div>
+            `;
+            box.appendChild(rDiv);
+        }
+    }
+
+    // Infinite Scroll Simulation
+    feed.onscroll = () => {
+        if(feed.scrollTop + feed.clientHeight >= feed.scrollHeight - 50) {
+            const randomVid = videos[Math.floor(Math.random() * videos.length)];
+            createVideoCard(randomVid);
+        }
+    }
+
+    window.onload = init;
+</script>
+</body>
+</html>
